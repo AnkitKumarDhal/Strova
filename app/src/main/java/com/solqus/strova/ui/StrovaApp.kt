@@ -81,6 +81,7 @@ fun StrovaApp() {
                 StrovaDestination.Home -> {
                     HomeScreen(
                         link = linkInput,
+                        queuedCount = queuedLinks.size,
                         onLinkChange = { linkInput = it },
                         onAdd = {
                             val cleanedLink = linkInput.trim()
@@ -90,6 +91,9 @@ fun StrovaApp() {
                                 linkInput = ""
                                 selectedName = StrovaDestination.Queue.name
                             }
+                        },
+                        onOpenQueue = {
+                            selectedName = StrovaDestination.Queue.name
                         }
                     )
                 }
