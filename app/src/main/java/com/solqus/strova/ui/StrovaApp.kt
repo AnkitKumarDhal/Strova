@@ -1,52 +1,64 @@
 package com.solqus.strova.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solqus.strova.ui.components.StrovaNavigationBar
 import com.solqus.strova.ui.navigation.StrovaDestination
 import com.solqus.strova.ui.screens.home.HomeScreen
 import com.solqus.strova.ui.screens.library.LibraryScreen
 import com.solqus.strova.ui.screens.queue.QueueScreen
 import com.solqus.strova.ui.screens.settings.SettingsScreen
+import kotlinx.coroutines.launch
 
 @Composable
-fun StrovaApp() {
+fun StrovaApp(viewModel: StrovaViewModel = viewModel()) {
     var selectedName by rememberSaveable {
         mutableStateOf(StrovaDestination.Home.name)
     }
 
-    var linkInput by rememberSaveable {
-        mutableStateOf("")
-    }
+    val linkInput by viewModel.linkInput.collectAsStateWithLifecycle()
+    val queue by viewModel.queue.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    var queuedLinks by remember {
-        mutableStateOf(emptyList<String>())
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                UiEvent.OpenQueue -> selectedName = StrovaDestination.Queue.name
+                is UiEvent.Message -> launch {
+                    snackbarHostState.showSnackbar(event.text)
+                }
+            }
+        }
     }
 
     val selectedDestination = StrovaDestination.valueOf(selectedName)
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             StrovaNavigationBar(
                 selectedDestination = selectedDestination,
-                onDestinationSelected = {
-                    selectedName = it.name
-                }
+                onDestinationSelected = { selectedName = it.name }
             )
         }
     ) { innerPadding ->
@@ -78,36 +90,19 @@ fun StrovaApp() {
         ) { destination ->
 
             when (destination) {
-                StrovaDestination.Home -> {
-                    HomeScreen(
-                        link = linkInput,
-                        queuedCount = queuedLinks.size,
-                        onLinkChange = { linkInput = it },
-                        onAdd = {
-                            val cleanedLink = linkInput.trim()
+                StrovaDestination.Home -> HomeScreen(
+                    link = linkInput,
+                    queuedCount = queue.size,
+                    onLinkChange = viewModel::onLinkChange,
+                    onAdd = viewModel::addLink,
+                    onOpenQueue = { selectedName = StrovaDestination.Queue.name }
+                )
 
-                            if (cleanedLink.isNotEmpty()) {
-                                queuedLinks = queuedLinks + cleanedLink
-                                linkInput = ""
-                                selectedName = StrovaDestination.Queue.name
-                            }
-                        },
-                        onOpenQueue = {
-                            selectedName = StrovaDestination.Queue.name
-                        }
-                    )
-                }
-
-                StrovaDestination.Queue -> {
-                    QueueScreen(
-                        queuedLinks = queuedLinks,
-                        onRemove = { index ->
-                            queuedLinks = queuedLinks.filterIndexed { i, _ ->
-                                i != index
-                            }
-                        }
-                    )
-                }
+                StrovaDestination.Queue -> QueueScreen(
+                    queue = queue,
+                    onRemove = viewModel::remove,
+                    onClearFinished = viewModel::clearFinished
+                )
 
                 StrovaDestination.Library -> LibraryScreen()
 
